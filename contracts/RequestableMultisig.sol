@@ -7,11 +7,11 @@ contract RequestableMultisig {
   /*
    *  Events
    */
-  event Confirmation(address indexed sender, uint indexed transactionId);
-  event Revocation(address indexed sender, uint indexed transactionId);
-  event Submission(uint indexed transactionId);
-  event Execution(uint indexed transactionId);
-  event ExecutionFailure(uint indexed transactionId);
+  event Confirmation(address indexed sender, bytes32 indexed transactionId);
+  event Revocation(address indexed sender, bytes32 indexed transactionId);
+  event Submission(bytes32 indexed transactionId);
+  event Execution(bytes32 indexed transactionId);
+  event ExecutionFailure(bytes32 indexed transactionId);
   event Deposit(address indexed sender, uint value);
   event OwnerAddition(address indexed owner);
   event OwnerRemoval(address indexed owner);
@@ -25,12 +25,12 @@ contract RequestableMultisig {
   /*
    *  Storage
    */
-  mapping (uint => Transaction) public transactions;
-  mapping (uint => mapping (address => bool)) public confirmations;
+  mapping (bytes32 => Transaction) public transactions;
+  bytes32[] public transactionIds;
+  mapping (bytes32 => mapping (address => bool)) public confirmations;
   mapping (address => bool) public isOwner;
   address[] public owners;
   uint public required;
-  uint public transactionCount;
 
   struct Transaction {
     address destination;
@@ -57,22 +57,22 @@ contract RequestableMultisig {
     _;
   }
 
-  modifier transactionExists(uint transactionId) {
+  modifier transactionExists(bytes32 transactionId) {
     require(transactions[transactionId].destination != 0);
     _;
   }
 
-  modifier confirmed(uint transactionId, address owner) {
+  modifier confirmed(bytes32 transactionId, address owner) {
     require(confirmations[transactionId][owner]);
     _;
   }
 
-  modifier notConfirmed(uint transactionId, address owner) {
+  modifier notConfirmed(bytes32 transactionId, address owner) {
     require(!confirmations[transactionId][owner]);
     _;
   }
 
-  modifier notExecuted(uint transactionId) {
+  modifier notExecuted(bytes32 transactionId) {
     require(!transactions[transactionId].executed);
     _;
   }
@@ -195,15 +195,15 @@ contract RequestableMultisig {
   /// @return Returns transaction ID.
   function submitTransaction(address destination, uint value, bytes data)
     public
-    returns (uint transactionId)
+    returns (bytes32 transactionId)
   {
     transactionId = addTransaction(destination, value, data);
-    emit confirmTransaction(transactionId);
+    confirmTransaction(transactionId);
   }
 
   /// @dev Allows an owner to confirm a transaction.
   /// @param transactionId Transaction ID.
-  function confirmTransaction(uint transactionId)
+  function confirmTransaction(bytes32 transactionId)
     public
     ownerExists(msg.sender)
     transactionExists(transactionId)
@@ -216,7 +216,7 @@ contract RequestableMultisig {
 
   /// @dev Allows an owner to revoke a confirmation for a transaction.
   /// @param transactionId Transaction ID.
-  function revokeConfirmation(uint transactionId)
+  function revokeConfirmation(bytes32 transactionId)
     public
     ownerExists(msg.sender)
     confirmed(transactionId, msg.sender)
@@ -228,7 +228,7 @@ contract RequestableMultisig {
 
   /// @dev Allows anyone to execute a confirmed transaction.
   /// @param transactionId Transaction ID.
-  function executeTransaction(uint transactionId)
+  function executeTransaction(bytes32 transactionId)
     public
     ownerExists(msg.sender)
     confirmed(transactionId, msg.sender)
@@ -272,7 +272,7 @@ contract RequestableMultisig {
   /// @dev Returns the confirmation status of a transaction.
   /// @param transactionId Transaction ID.
   /// @return Confirmation status.
-  function isConfirmed(uint transactionId)
+  function isConfirmed(bytes32 transactionId)
     public
     view
     returns (bool)
@@ -300,16 +300,19 @@ contract RequestableMultisig {
   function addTransaction(address destination, uint value, bytes data)
     internal
     notNull(destination)
-    returns (uint transactionId)
+    returns (bytes32 transactionId)
   {
-    transactionId = transactionCount;
-    transactions[transactionId] = Transaction({
+    Transaction memory transaction = Transaction({
       destination: destination,
       value: value,
       data: data,
       executed: false
     });
-    transactionCount += 1;
+
+    transactionId = hash(transaction);
+    transactions[transactionId] = transaction;
+    transactionIds.push(transactionId);
+
     emit Submission(transactionId);
   }
 
@@ -319,7 +322,7 @@ contract RequestableMultisig {
   /// @dev Returns number of confirmations of a transaction.
   /// @param transactionId Transaction ID.
   /// @return Number of confirmations.
-  function getConfirmationCount(uint transactionId)
+  function getConfirmationCount(bytes32 transactionId)
     public
     view
     returns (uint count)
@@ -340,9 +343,9 @@ contract RequestableMultisig {
     view
     returns (uint count)
   {
-    for (uint i = 0; i < transactionCount; i++) {
-      if (pending && !transactions[i].executed ||
-        executed && transactions[i].executed) {
+    for (uint i = 0; i < transactionIds.length; i++) {
+      if (pending && !transactions[transactionIds[i]].executed ||
+        executed && transactions[transactionIds[i]].executed) {
         count += 1;
       }
     }
@@ -361,7 +364,7 @@ contract RequestableMultisig {
   /// @dev Returns array with owner addresses, which confirmed transaction.
   /// @param transactionId Transaction ID.
   /// @return Returns array of owner addresses.
-  function getConfirmations(uint transactionId)
+  function getConfirmations(bytes32 transactionId)
     public
     view
     returns (address[] _confirmations)
@@ -395,13 +398,13 @@ contract RequestableMultisig {
     view
     returns (uint[] _transactionIds)
   {
-    uint[] memory transactionIdsTemp = new uint[](transactionCount);
+    uint[] memory transactionIdsTemp = new uint[](transactionIds.length);
     uint count = 0;
     uint i;
 
-    for (i = 0; i < transactionCount; i++)
-      if (pending && !transactions[i].executed ||
-        executed && transactions[i].executed) {
+    for (i = 0; i < transactionIds.length; i++)
+      if (pending && !transactions[transactionIds[i]].executed ||
+        executed && transactions[transactionIds[i]].executed) {
         transactionIdsTemp[count] = i;
         count += 1;
       }
@@ -411,5 +414,9 @@ contract RequestableMultisig {
     for (i = from; i < to; i++) {
       _transactionIds[i - from] = transactionIdsTemp[i];
     }
+  }
+
+  function hash(Transaction memory transaction) internal returns (bytes32 transactionId) {
+    return keccak256(abi.encodePacked(transaction.destination, transaction.value, transaction.data));
   }
 }
