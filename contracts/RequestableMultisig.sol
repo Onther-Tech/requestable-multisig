@@ -223,8 +223,7 @@ contract RequestableMultisig {
       required = trieValue.toUint();
       emit RequirementChange(trieValue.toUint());
     } else {
-      // accept invalid enter request but revert in case of invalid exit.
-      require(!isExit);
+      revert();
     }
 
     appliedRequests[requestId] = true;
