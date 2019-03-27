@@ -256,6 +256,7 @@ contract RequestableMultisig {
     bytes32 transactionId
   )
     internal
+    notExecuted(transactionId)
   {
     // check ownership for exit request.
     require(!isExit || isOwner[requestor]);
@@ -286,6 +287,7 @@ contract RequestableMultisig {
     bytes32 transactionId
   )
     internal
+    notExecuted(transactionId)
   {
     // check ownership for exit request.
     require(!isExit || isOwner[requestor]);
@@ -348,9 +350,9 @@ contract RequestableMultisig {
   /// @dev Allows to remove an owner. Transaction has to be sent by wallet.
   /// @param owner Address of owner.
   function removeOwner(address owner)
-      public
-      onlyWallet
-      ownerExists(owner)
+    public
+    onlyWallet
+    ownerExists(owner)
   {
     isOwner[owner] = false;
     for (uint i = 0; i < owners.length - 1; i++) {
