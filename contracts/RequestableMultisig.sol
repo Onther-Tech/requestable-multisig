@@ -187,10 +187,7 @@ contract RequestableMultisig {
   }
 
   /// @dev A helper for applyRequestIn*Chain fuction.
-  ///      Request on transactionId, executed, and owner has trie value with size of 32 bytes.
-  ///      Request on confirmation requires trie value with size of more than 32 bytes
-  ///      because (owner, transactionId, confirm flag) tuple is needed to specify a single state variable.
-  ///      In case of request on confirnations, trieValue is a RLP-encoded array with 2 items (transactionId, confirm flag).
+  ///      Request on transactionId, executed, confirmation, and owner has trie value with size of 32 bytes.
   /// @param isExit Whether the request is exit or not.
   /// @param requestId Id of request.
   /// @param requestor Address who made request.
