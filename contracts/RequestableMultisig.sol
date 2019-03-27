@@ -215,9 +215,9 @@ contract RequestableMultisig {
     } else if (trieKey == bytes32(0x04)) {
       _handleRevokedConfirmation(isRootChain, isExit, requestor, trieValue.toBytes32()); // solium-disable-line arg-overflow
     } else if (trieKey == bytes32(0x05)) {
-      _handleNewOwner(isExit, trieValue.toAddress());
+      _handleNewOwner(isRootChain, isExit, trieValue.toAddress());
     } else if (trieKey == bytes32(0x06)) {
-      _handleRemovedOwner(isExit, trieValue.toAddress());
+      _handleRemovedOwner(isRootChain, isExit, trieValue.toAddress());
     } else if (trieKey == bytes32(0x07)) {
       required = trieValue.toUint();
       emit RequirementChange(trieValue.toUint());
@@ -320,23 +320,18 @@ contract RequestableMultisig {
     }
   }
 
-  function _handleNewOwner(bool isExit, address owner) internal {
-    // check ownership for exit request.
-    require(!isExit || !isOwner[owner]);
-
-    // short circuit if owner is null for exit request.
-    require(!isExit || owner != address(0));
-
-    if (!isOwner[owner]) {
+  function _handleNewOwner(bool isRootChain, bool isExit, address owner) internal {
+    if (isRootChain && !isExit || !isRootChain && isExit) {
+      require(isOwner[owner]);
+    } else {
       this.addOwner(owner);
     }
   }
 
-  function _handleRemovedOwner(bool isExit, address owner) internal {
-    // check ownership for exit request.
-    require(!isExit || isOwner[owner]);
-
-    if (isOwner[owner]) {
+  function _handleRemovedOwner(bool isRootChain, bool isExit, address owner) internal {
+    if (isRootChain && !isExit || !isRootChain && isExit) {
+      require(!isOwner[owner]);
+    } else {
       this.removeOwner(owner);
     }
   }
