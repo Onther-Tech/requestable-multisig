@@ -267,7 +267,7 @@ contract RequestableMultisig {
     //     exit request      |  must not be confirmed  |  must be confirmed
     if (isRootChain && !isExit || !isRootChain && isExit) {
       require(confirmations[transactionId][requestor]);
-      confirmations[transactionId][requestor] = true;
+      confirmations[transactionId][requestor] = false;
       // What evnet should be fired?
     } else {
       require(!confirmations[transactionId][requestor]);
@@ -275,8 +275,6 @@ contract RequestableMultisig {
       emit Confirmation(requestor, transactionId);
     }
   }
-
-  // TODO: request multisig's asset
 
   /// @notice Make sure that requestor is owner before making exit request on confirmation.
   function _handleRevokedConfirmation(
@@ -298,7 +296,6 @@ contract RequestableMultisig {
     //     exit request      |  must be confirmed      |  must not be confirmed
     if (isRootChain && !isExit || !isRootChain && isExit) {
       require(!confirmations[transactionId][requestor]);
-      confirmations[transactionId][requestor] = false;
       // What evnet should be fired?
     } else {
       require(confirmations[transactionId][requestor]);
