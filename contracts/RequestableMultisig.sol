@@ -1,12 +1,13 @@
 pragma solidity ^0.4.24;
 
+import "./RLP.sol";
 import "./SimpleDecode.sol";
 
 
 // orignated from https://github.com/gnosis/MultiSigWallet/blob/master/contracts/MultiSigWallet.sol
 // solium-disable function-order
 contract RequestableMultisig {
-  using SimpleDecode for *;
+  using SimpleDecode for bytes;
 
   /*
    *  Events
@@ -34,25 +35,25 @@ contract RequestableMultisig {
   // rootchain is not requestable.
   address public rootchain;
 
-  // transaction is not requestable. User has to add each transaction data.
+  // Request for transaction has trieKey of 0x00.
   mapping (bytes32 => Transaction) public transactions;
 
-  // Request on transactionIds has trieKey of 0x00.
+  // Request for transactionIds has trieKey of 0x01.
   bytes32[] public transactionIds;
 
-  // Request on executed has trieKey of 0x01.
+  // Request for executed has trieKey of 0x02.
   mapping (bytes32 => bool) public executed;
 
-  // Request on new confirmation has trieKey of 0x02.
-  // Request on revoked confirmation has trieKey of 0x03.
+  // Request for new confirmation has trieKey of 0x03.
+  // Request for revoked confirmation has trieKey of 0x04.
   mapping (bytes32 => mapping (address => bool)) public confirmations;
 
-  // Request on new owner has trieKey of 0x04.
-  // Request on removed owner has trieKey of 0x05.
+  // Request for new owner has trieKey of 0x05.
+  // Request for removed owner has trieKey of 0x06.
   address[] public owners;
   mapping (address => bool) public isOwner;
 
-  // Request on required has trieKey of 0x06.
+  // Request for required has trieKey of 0x07.
   uint public required;
 
   // appliedRequests is not requestable.
@@ -187,7 +188,7 @@ contract RequestableMultisig {
   }
 
   /// @dev A helper for applyRequestIn*Chain fuction.
-  ///      Request on transactionId, executed, confirmation, and owner has trie value with size of 32 bytes.
+  ///      Request for transactionId, executed, confirmation, and owner has trie value with size of 32 bytes.
   /// @param isExit Whether the request is exit or not.
   /// @param requestId Id of request.
   /// @param requestor Address who made request.
@@ -203,20 +204,21 @@ contract RequestableMultisig {
   ) internal {
     require(!appliedRequests[requestId]);
 
-
     if (trieKey == 0x00) {
+      _handleTransaction(isRootChain, isExit, toTransaction(trieValue));
+    } else if (trieKey == 0x01) {
       _handleTransactionId(isExit, trieValue.toBytes32());
-    } else if (trieKey == bytes32(0x01)) {
-      _handleExecuted(isExit, trieValue.toBytes32());
     } else if (trieKey == bytes32(0x02)) {
-      _handleNewConfirmation(isRootChain, isExit, requestor, trieValue.toBytes32()); // solium-disable-line arg-overflow
+      _handleExecuted(isExit, trieValue.toBytes32());
     } else if (trieKey == bytes32(0x03)) {
-      _handleRevokedConfirmation(isRootChain, isExit, requestor, trieValue.toBytes32()); // solium-disable-line arg-overflow
+      _handleNewConfirmation(isRootChain, isExit, requestor, trieValue.toBytes32()); // solium-disable-line arg-overflow
     } else if (trieKey == bytes32(0x04)) {
-      _handleNewOwner(isExit, trieValue.toAddress());
+      _handleRevokedConfirmation(isRootChain, isExit, requestor, trieValue.toBytes32()); // solium-disable-line arg-overflow
     } else if (trieKey == bytes32(0x05)) {
-      _handleRemovedOwner(isExit, trieValue.toAddress());
+      _handleNewOwner(isExit, trieValue.toAddress());
     } else if (trieKey == bytes32(0x06)) {
+      _handleRemovedOwner(isExit, trieValue.toAddress());
+    } else if (trieKey == bytes32(0x07)) {
       required = trieValue.toUint();
       emit RequirementChange(trieValue.toUint());
     } else {
@@ -224,6 +226,23 @@ contract RequestableMultisig {
     }
 
     appliedRequests[requestId] = true;
+  }
+
+  function _handleTransaction(bool isRootChain, bool isExit, Transaction memory transaction) internal {
+    bytes32 transactionId = hash(transaction);
+
+    // transaction check
+    //                          isRootChain == true       isRootChain == false
+    //                       +--------------------------------------------------
+    //     enter request     |  must be added         |  must not be added
+    //     exit request      |  must not be added     |  must be added
+
+    if (isRootChain && !isExit || !isRootChain && isExit) {
+      require(transactions[transactionId].added);
+    } else {
+      require(!transactions[transactionId].added);
+      addTransaction(transaction.destination, transaction.value, transaction.data);
+    }
   }
 
   function _handleTransactionId(bool isExit, bytes32 transactionId) internal {
@@ -244,7 +263,7 @@ contract RequestableMultisig {
     emit ExecutionAdded(transactionId);
   }
 
-  /// @notice Make sure that requestor is owner before making exit request on confirmation.
+  /// @notice Make sure that requestor is owner before making exit request for confirmation.
   function _handleNewConfirmation(
     bool isRootChain,
     bool isExit,
@@ -273,7 +292,7 @@ contract RequestableMultisig {
     }
   }
 
-  /// @notice Make sure that requestor is owner before making exit request on confirmation.
+  /// @notice Make sure that requestor is owner before making exit request for confirmation.
   function _handleRevokedConfirmation(
     bool isRootChain,
     bool isExit,
@@ -320,6 +339,15 @@ contract RequestableMultisig {
     if (isOwner[owner]) {
       this.removeOwner(owner);
     }
+  }
+
+  function toTransaction(bytes memory b) internal pure returns (Transaction memory transaction) {
+    RLP.RLPItem[] memory items = b.toRlpItem().toList();
+
+    transaction.destination = items[0].toAddress();
+    transaction.value = items[1].toUint();
+    transaction.data = items[2].toBytes();
+    transaction.added = true;
   }
 
   /*
